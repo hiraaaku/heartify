@@ -89,21 +89,15 @@ export function Sidebar({ onClose, isCollapsed = false, onToggleCollapse }: Side
             </Link>
           )
         })}
-      </nav>
-
-      {/* Logout Button */}
-      <div className="p-3 border-t border-white/20">
-        <Button
+        <button
           onClick={handleLogout}
-          className={`w-full text-white bg-white/10 hover:bg-white/20 transition-colors rounded-lg ${
-            isCollapsed ? 'p-2' : ''
-          }`}
+          className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors text-white/70 hover:bg-white/10 hover:text-white ${isCollapsed ? 'justify-center' : ''}`}
           title={isCollapsed ? 'Logout' : ''}
         >
           <LogOut className="w-5 h-5 flex-shrink-0" />
-          {!isCollapsed && <span className="ml-2">Logout</span>}
-        </Button>
-      </div>
+          {!isCollapsed && <span className="font-medium">Logout</span>}
+        </button>
+      </nav>
     </div>
   )
 }

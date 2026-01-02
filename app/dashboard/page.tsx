@@ -51,7 +51,7 @@ export default function DashboardPage() {
     <main className="pt-20 md:pt-0 p-4 md:p-8">
       {/* Page Title */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground">Rangkuman Monitoring Pasien</h1>
+        <h1 className="text-3xl font-bold text-foreground pt-4">Rangkuman Monitoring Pasien</h1>
         <p className="text-muted-foreground mt-2">Lihat status kesehatan pasien Anda secara real-time</p>
       </div>
 
