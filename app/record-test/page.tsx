@@ -4,35 +4,43 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { Download, Trash2 } from 'lucide-react'
-
-// Generate mock signal data
-const generateSignalData = () => {
-  const data = []
-  for (let i = 0; i < 100; i++) {
-    data.push({
-      time: i,
-      ecg: 50 + 30 * Math.sin(i * 0.1) + Math.random() * 5,
-      pcg: 40 + 20 * Math.cos(i * 0.15) + Math.random() * 3,
-    })
-  }
-  return data
-}
+import { Download, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { getPatients, Patient } from '@/lib/api'
+import { useRealtimeData } from '@/hooks/useRealtimeData'
 
 export default function RecordTestPage() {
   const router = useRouter()
   const [isAuthed, setIsAuthed] = useState(false)
+  const [patients, setPatients] = useState<Patient[]>([])
+  const [selectedPatientId, setSelectedPatientId] = useState<string>('')
   const [recording, setRecording] = useState(false)
   const [recordingComplete, setRecordingComplete] = useState(false)
   const [duration, setDuration] = useState(0)
-  const [ecgData, setEcgData] = useState(generateSignalData())
-  const [pcgData, setPcgData] = useState(generateSignalData())
-  const [heartRate, setHeartRate] = useState(72)
-  const [status, setStatus] = useState<'normal' | 'abnormal'>('normal')
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const durationRef = useRef(0)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const selectedPatient = patients.find(p => p.id.toString() === selectedPatientId)
+  
+  // Use the realtime data hook
+  const { ecgData, pcgData, heartRate, status, isConnected } = useRealtimeData(
+    recording && selectedPatientId ? parseInt(selectedPatientId) : undefined
+  )
+
+  // Format data for charts
+  const chartData = ecgData.map((ecg, index) => ({
+    time: index,
+    ecg,
+    pcg: pcgData[index] || 0
+  }))
 
   useEffect(() => {
     const auth = localStorage.getItem('auth')
@@ -40,41 +48,24 @@ export default function RecordTestPage() {
       router.push('/login')
     } else {
       setIsAuthed(true)
+      fetchPatients()
     }
   }, [router])
 
-  // Auto-refresh signals every 500ms
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (recording) {
-        setEcgData((prev) => {
-          const newData = [...prev.slice(1), {
-            time: prev[prev.length - 1].time + 1,
-            ecg: 50 + 30 * Math.sin((prev[prev.length - 1].time + 1) * 0.1) + Math.random() * 5,
-            pcg: 40 + 20 * Math.cos((prev[prev.length - 1].time + 1) * 0.15) + Math.random() * 3,
-          }]
-          return newData
-        })
-        
-        setPcgData((prev) => {
-          const newData = [...prev.slice(1), {
-            time: prev[prev.length - 1].time + 1,
-            ecg: 50 + 30 * Math.sin((prev[prev.length - 1].time + 1) * 0.1) + Math.random() * 5,
-            pcg: 40 + 20 * Math.cos((prev[prev.length - 1].time + 1) * 0.15) + Math.random() * 3,
-          }]
-          return newData
-        })
-
-        const newHR = 60 + Math.random() * 40
-        setHeartRate(Math.round(newHR))
-        setStatus(newHR < 60 || newHR > 100 ? 'abnormal' : 'normal')
+  const fetchPatients = async () => {
+    try {
+      const data = await getPatients()
+      setPatients(data)
+      if (data.length > 0) {
+        setSelectedPatientId(data[0].id.toString())
       }
-    }, 500)
-
-    return () => clearInterval(interval)
-  }, [recording])
+    } catch (error) {
+      console.error('Failed to fetch patients:', error)
+    }
+  }
 
   const handleStartRecording = () => {
+    if (!selectedPatientId) return
     setRecording(true)
     setRecordingComplete(false)
     durationRef.current = 0
@@ -87,25 +78,26 @@ export default function RecordTestPage() {
   const handleStopRecording = () => {
     setRecording(false)
     setRecordingComplete(true)
-    if (timerRef.current) clearInterval(timerRef.current)
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
   }
 
   const handleSaveToDatabase = () => {
+    // In a real app, you might want to send a confirmation to the API
+    // For now, we assume the data is already saved on the backend via WebSocket/API
     setShowSuccessModal(true)
     setTimeout(() => {
       setShowSuccessModal(false)
       setRecordingComplete(false)
       setDuration(0)
-      setEcgData(generateSignalData())
-      setPcgData(generateSignalData())
     }, 2000)
   }
 
   const handleDiscardRecording = () => {
     setRecordingComplete(false)
     setDuration(0)
-    setEcgData(generateSignalData())
-    setPcgData(generateSignalData())
   }
 
   const getFormattedDate = () => {
@@ -119,18 +111,52 @@ export default function RecordTestPage() {
     <main className="pt-20 md:pt-0 p-4 md:p-8">
       {/* Page Title */}
       <div className="mb-8 pt-20 md:pt-0">
-        <h1 className="text-3xl font-bold text-foreground">Record Test</h1>
-        <p className="text-muted-foreground mt-2">Monitoring real-time ECG dan PCG signal</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Record Test</h1>
+            <p className="text-muted-foreground mt-2">Monitoring real-time ECG dan PCG signal</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {isConnected ? (
+              <div className="flex items-center gap-2 text-green-600 bg-green-100 px-3 py-1 rounded-full">
+                <Wifi className="w-4 h-4" />
+                <span className="text-sm font-medium">Connected</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-red-600 bg-red-100 px-3 py-1 rounded-full">
+                <WifiOff className="w-4 h-4" />
+                <span className="text-sm font-medium">Disconnected</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Patient Selection */}
+      <div className="mb-8">
+        <label className="block text-sm font-medium text-foreground mb-2">Pilih Pasien</label>
+        <Select value={selectedPatientId} onValueChange={setSelectedPatientId} disabled={recording}>
+          <SelectTrigger className="w-[300px]">
+            <SelectValue placeholder="Pilih pasien..." />
+          </SelectTrigger>
+          <SelectContent>
+            {patients.map((patient) => (
+              <SelectItem key={patient.id} value={patient.id.toString()}>
+                {patient.name} ({patient.age} th)
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <Card className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
           <p className="text-sm text-blue-600 font-semibold mb-1">Nama Pasien</p>
-          <p className="text-lg font-bold text-blue-900">Budi Santoso</p>
+          <p className="text-lg font-bold text-blue-900">{selectedPatient?.name || '-'}</p>
         </Card>
         <Card className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
           <p className="text-sm text-purple-600 font-semibold mb-1">Usia</p>
-          <p className="text-lg font-bold text-purple-900">45 Tahun</p>
+          <p className="text-lg font-bold text-purple-900">{selectedPatient?.age || '-'} Tahun</p>
         </Card>
         <Card className="p-4 bg-gradient-to-br from-green-50 to-green-100 border-green-200">
           <p className="text-sm text-green-600 font-semibold mb-1">Tanggal</p>
@@ -147,12 +173,12 @@ export default function RecordTestPage() {
         <Card className="p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4">ECG Waveform</h2>
           <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={ecgData}>
+            <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="time" />
-              <YAxis />
+              <XAxis dataKey="time" hide />
+              <YAxis domain={['auto', 'auto']} />
               <Tooltip />
-              <Line type="monotone" dataKey="ecg" stroke="oklch(0.28 0.15 260)" strokeWidth={1} dot={false} />
+              <Line type="monotone" dataKey="ecg" stroke="oklch(0.28 0.15 260)" strokeWidth={2} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </Card>
@@ -160,12 +186,12 @@ export default function RecordTestPage() {
         <Card className="p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4">PCG Waveform</h2>
           <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={pcgData}>
+            <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="time" />
-              <YAxis />
+              <XAxis dataKey="time" hide />
+              <YAxis domain={['auto', 'auto']} />
               <Tooltip />
-              <Line type="monotone" dataKey="pcg" stroke="oklch(0.45 0.12 260)" strokeWidth={1} dot={false} />
+              <Line type="monotone" dataKey="pcg" stroke="oklch(0.45 0.12 260)" strokeWidth={2} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </Card>
@@ -174,18 +200,18 @@ export default function RecordTestPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <Card className="p-6 text-center">
           <p className="text-sm text-muted-foreground mb-2">Heart Rate</p>
-          <p className="text-4xl font-bold text-primary">{heartRate}</p>
+          <p className="text-4xl font-bold text-primary">{heartRate || 0}</p>
           <p className="text-sm text-muted-foreground mt-1">BPM</p>
         </Card>
         <Card className="p-6 text-center">
           <p className="text-sm text-muted-foreground mb-2">Status Monitoring</p>
-          <p className={`text-2xl font-bold ${status === 'normal' ? 'text-green-600' : 'text-red-600'}`}>
-            {status === 'normal' ? 'Normal' : 'Abnormal'}
+          <p className={`text-2xl font-bold ${status === 'Normal' ? 'text-green-600' : 'text-red-600'}`}>
+            {status}
           </p>
         </Card>
         <Card className="p-6 text-center">
           <p className="text-sm text-muted-foreground mb-2">Durasi</p>
-          <p className="text-4xl font-bold text-primary">{String(duration).padStart(2, '0')}:00</p>
+          <p className="text-4xl font-bold text-primary">{String(Math.floor(duration / 60)).padStart(2, '0')}:{String(duration % 60).padStart(2, '0')}</p>
         </Card>
       </div>
 
@@ -193,12 +219,13 @@ export default function RecordTestPage() {
       <Card className="p-8 text-center">
         <div className="mb-6">
           <p className="text-muted-foreground mb-2">Recording Duration</p>
-          <p className="text-4xl font-bold text-primary">{String(duration).padStart(2, '0')}:00</p>
+          <p className="text-4xl font-bold text-primary">{String(Math.floor(duration / 60)).padStart(2, '0')}:{String(duration % 60).padStart(2, '0')}</p>
         </div>
         
         {!recordingComplete ? (
           <Button
             onClick={recording ? handleStopRecording : handleStartRecording}
+            disabled={!selectedPatientId}
             className={`px-8 py-3 text-white font-semibold rounded-lg transition-all ${
               recording
                 ? 'gradient-medical hover:opacity-90'
