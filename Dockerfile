@@ -16,13 +16,16 @@ RUN npm install react-is --legacy-peer-deps
 # Copy source code
 COPY . .
 
+# Build application
+RUN npm run build
+
 # Expose port 3070
 EXPOSE 3070
 
 # Set environment variables
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3070
-ENV NODE_ENV=development
+ENV NODE_ENV=production
 
-# Jalankan perintah dev
-CMD ["npm", "run", "dev", "--", "--port", "3070", "--hostname", "0.0.0.0"]
+# Jalankan perintah start
+CMD ["npm", "start"]
